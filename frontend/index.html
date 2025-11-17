@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Speech to Slides</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);min-height: 100vh;}
+        .status-recording { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .record-btn { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #dc3545; font-size: 24px;}
+        .record-btn.recording { background: #dc3545 !important; color: white !important; }
+        .slide-content h1 { color: #2c3e50; font-weight: 600; }
+        .slide-content li { margin: 8px 0; color: #34495e; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid p-3">
+        <div class="card shadow-lg border-0 rounded-3 mx-auto" style="max-width: 1400px;">
+            <!-- Header -->
+            <div class="card-header bg-success text-white text-center py-4 rounded-top">
+                <h1 class="mb-2"><i class="fas fa-microphone me-3"></i>Real-Time Speech to Slides</h1>
+                <p class="mb-0">Speak naturally and watch your words transform into presentation slides</p>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="card-body bg-light border-bottom">
+                <div class="row align-items-center">
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-secondary me-2" id="connectionStatus">●</span>
+                            <span id="connectionText">Connecting...</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-center">
+                        <button class="btn record-btn btn-outline-danger" id="recordBtn" disabled>
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <div class="mt-2">
+                            <small class="text-muted" id="recordingStatus">Click to start recording</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-outline-primary me-2" id="generateSlideBtn" disabled>
+                            <i class="fas fa-plus-circle me-1"></i>Generate Slide
+                        </button>
+                        <button class="btn btn-outline-secondary" id="clearBtn">
+                            <i class="fas fa-trash me-1"></i>Clear All
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="row g-0">
+                <!-- Slide Display -->
+                <div class="col-lg-8">
+                    <div class="position-relative bg-white p-4 m-3 rounded shadow-sm" style="min-height: 500px;">
+                        <span class="position-absolute top-0 end-0 badge bg-dark m-3" id="slideIndicator">
+                            Slide 0 of 0
+                        </span>
+                        <div class="slide-content d-flex align-items-center justify-content-center h-100" id="slideContent">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-presentation fa-3x mb-3"></i>
+                                <h3>Start Speaking</h3>
+                                <p>Your slides will appear here as you speak</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Slide Navigation -->
+                    <div class="card-footer bg-light d-flex justify-content-between align-items-center">
+                        <button class="btn btn-outline-primary" id="prevSlide" disabled>
+                            <i class="fas fa-chevron-left me-1"></i>Previous
+                        </button>
+                        <div class="text-center">
+                            <span class="badge bg-primary me-2" id="slideCounter">0 slides</span>
+                            <small class="text-muted" id="lastUpdated"></small>
+                        </div>
+                        <button class="btn btn-outline-primary" id="nextSlide" disabled>
+                            Next<i class="fas fa-chevron-right ms-1"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Transcript Panel -->
+                <div class="col-lg-4">
+                    <div class="card m-3 h-75">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>Live Transcript</h5>
+                        </div>
+                        <div class="card-body bg-light" style="max-height: 300px; overflow-y: auto;">
+                            <div class="text-muted mb-2 fst-italic" id="partialTranscript"></div>
+                            <div id="fullTranscript"></div>
+                            <div class="text-center mt-3 d-none" id="transcriptLoading">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="ms-2">Processing audio...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- System Status -->
+                    <div class="card m-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">System Status</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="small">
+                                <div class="mb-1" id="audioStatus">
+                                    <i class="fas fa-microphone text-muted"></i> Audio: Not connected
+                                </div>
+                                <div class="mb-1" id="apiStatus">
+                                    <i class="fas fa-cloud text-muted"></i> API: Not connected
+                                </div>
+                                <div id="slideStatus">
+                                    <i class="fas fa-presentation text-muted"></i> Slides: Ready
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <script src="utils.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
