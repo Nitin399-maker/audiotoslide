@@ -1,6 +1,6 @@
 import { bootstrapAlert } from "https://cdn.jsdelivr.net/npm/bootstrap-alert@1";
 import { OUTPUT_STYLES, REVEAL_THEMES, MIN_CHARS_FOR_SLIDE, SILENCE_THRESHOLD, removeDuplicateSentences, escapeHtml,
-  saveConfig, loadConfig, createPresentationHTML
+  saveConfig, loadConfig, createPresentationHTML, downloadPresentationHTML, getCustomPrompt, setCustomPrompt
 } from "./utils.js";
 
 const $apiKey = document.getElementById("api-key");
@@ -11,6 +11,7 @@ const $recordBtn = document.getElementById("record-btn");
 const $prevSlideBtn = document.getElementById("prev-slide-btn");
 const $nextSlideBtn = document.getElementById("next-slide-btn");
 const $openPresentationBtn = document.getElementById("open-presentation-btn");
+const $downloadHtmlBtn = document.getElementById("download-html-btn");
 const $statusIndicator = document.getElementById("status-indicator");
 const $connectionStatus = document.getElementById("connection-status");
 const $slideCount = document.getElementById("slide-count");
@@ -37,9 +38,31 @@ let processedTexts = new Set();
 let silenceCheckInterval = null;
 let lastSpeechTime = 0;
 
+function initializePromptEditors() {
+  Object.keys(OUTPUT_STYLES).forEach(styleKey => {
+    const textarea = document.getElementById(`prompt-textarea-${styleKey}`);
+    if (textarea) {
+      textarea.value = getCustomPrompt(styleKey);
+      textarea.oninput = () => {
+        setCustomPrompt(styleKey, textarea.value);
+      };
+    }
+  });
+}
+
+function updatePromptEditor() {
+  const selectedStyle = $styleSelect.value;
+  document.querySelectorAll('.prompt-section').forEach(section => {
+    section.classList.remove('active');
+  });
+  const activeSection = document.getElementById(`prompt-${selectedStyle}`);
+  if (activeSection) { activeSection.classList.add('active'); }
+}
+
 $configBtn.onclick = () => {
   $configModal.classList.add("show");
   $configOverlay.classList.add("show");
+  updatePromptEditor();
 };
 
 $closeConfigBtn.onclick = $configOverlay.onclick = () => {
@@ -60,7 +83,10 @@ $apiKey.oninput = () => {
   updateControlsState();
 };
 
-$modelSelect.onchange = $styleSelect.onchange = () => saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
+$modelSelect.onchange = $styleSelect.onchange = () => {
+  saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
+  updatePromptEditor();
+};
 
 $themeSelect.onchange = () => {
   saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
@@ -71,15 +97,25 @@ const updateControlsState = () => {
   const hasKey = !!$apiKey.value.trim();
   $recordBtn.disabled = !hasKey;
   $openPresentationBtn.disabled = !hasKey;
+  $downloadHtmlBtn.disabled = slides.length === 0;
 };
 
 loadConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
+initializePromptEditors();
+updatePromptEditor();
 updateControlsState();
 
 $recordBtn.onclick = () => isRecording ? stopRecording() : startRecording();
 $prevSlideBtn.onclick = () => navigateSlide(-1);
 $nextSlideBtn.onclick = () => navigateSlide(1);
 $openPresentationBtn.onclick = openPresentationWindow;
+$downloadHtmlBtn.onclick = downloadSlides;
+
+function downloadSlides() {
+  const themeFile = REVEAL_THEMES[$themeSelect.value]?.file || "league.css";
+  downloadPresentationHTML(slides, escapeHtml, themeFile);
+  bootstrapAlert({ title: "Downloaded", body: "Presentation downloaded successfully!", color: "success" });
+}
 
 async function startRecording() {
   try {
@@ -92,7 +128,6 @@ async function startRecording() {
     mediaStream.getAudioTracks().forEach(track => peerConnection.addTrack(track, mediaStream));
     dataChannel = peerConnection.createDataChannel("oai-events");
     setupDataChannel();
-
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
     const response = await fetch(`https://api.openai.com/v1/realtime?model=${$modelSelect.value}`, {
@@ -105,7 +140,6 @@ async function startRecording() {
     });
     if (!response.ok) throw new Error(`API Error: ${response.status}`);
     await peerConnection.setRemoteDescription({ type: "answer", sdp: await response.text() });
-    
     isRecording = true;
     $recordBtn.classList.add("btn-danger", "recording");
     $recordBtn.classList.remove("btn-outline-danger");
@@ -139,7 +173,6 @@ function setupDataChannel() {
       },
     }));
   };
-
   dataChannel.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "conversation.item.input_audio_transcription.completed" && msg.transcript) {
@@ -160,7 +193,7 @@ function addTranscript(text) {
   const cleaned = text.trim();
   if (!cleaned) return;
   const textHash = cleaned.toLowerCase();
-  if (processedTexts.has(textHash)) {  return; }
+  if (processedTexts.has(textHash)) return;
   processedTexts.add(textHash);
   const timestamp = new Date().toLocaleTimeString();
   currentSegmentBuffer += cleaned + " ";
@@ -203,7 +236,6 @@ async function createSlide(content) {
   const cleanedContent = removeDuplicateSentences(content);
   if (!cleanedContent) return;
   $bufferStatus.textContent = "Generating slide...";
-  
   const slideData = await generateSlide(cleanedContent);
   if (!slideData) return;
   slides.push({
@@ -217,7 +249,7 @@ async function createSlide(content) {
   updateSlideCount();
   updateSlidePreview();
   updatePresentationWindow();
-  
+  updateControlsState();
   $prevSlideBtn.disabled = slides.length <= 1;
   $nextSlideBtn.disabled = true;
   $bufferStatus.textContent = `Buffer: ${currentSegmentBuffer.length} chars`;
@@ -225,7 +257,7 @@ async function createSlide(content) {
 
 async function generateSlide(content) {
   const apiKey = $apiKey.value.trim();
-  const style = OUTPUT_STYLES[$styleSelect.value];
+  const customPrompt = getCustomPrompt($styleSelect.value);
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -236,7 +268,7 @@ async function generateSlide(content) {
       body: JSON.stringify({
         model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: style.systemPrompt },
+          { role: "system", content: customPrompt },
           { role: "user", content: content }
         ],
         response_format: { type: "json_object" }
@@ -247,7 +279,7 @@ async function generateSlide(content) {
     const result = JSON.parse(data.choices[0].message.content);
     return { title: result.title || "📌 Key Point", content: result.content || content };
   } catch (error) {
-     throw new Error("Slide generation failed: " + error.message);
+    throw new Error("Slide generation failed: " + error.message);
   }
 }
 
@@ -261,7 +293,6 @@ function updateSlidePreview() {
     $slidePreview.innerHTML = '<p class="text-muted text-center">No slides yet.</p>';
     return;
   }
-
   const slide = slides[currentSlideIndex];
   $slidePreview.innerHTML = `
     <h4 class="text-primary">${escapeHtml(slide.title)}</h4>
@@ -289,8 +320,8 @@ function openPresentationWindow() {
   const html = createPresentationHTML(slides, escapeHtml, themeFile);
   const [width, height] = [800, 600];
   presentationWindow = window.open(
-    "", 
-    "LiveSlidesPresentation", 
+    "",
+    "LiveSlidesPresentation",
     `width=${width},height=${height},left=${(screen.width - width) / 2},top=${(screen.height - height) / 2},scrollbars=no,resizable=yes`
   );
   if (!presentationWindow) {
@@ -304,21 +335,21 @@ function openPresentationWindow() {
 function updatePresentationWindow() {
   if (!presentationWindow || presentationWindow.closed) return;
   const slide = slides[slides.length - 1];
-  try {  presentationWindow.addSlide(escapeHtml(slide.title), escapeHtml(slide.content)); } 
+  try { presentationWindow.addSlide(escapeHtml(slide.title), escapeHtml(slide.content)); }
   catch (e) { console.error("Update error:", e); }
 }
 
 function updatePresentationTheme() {
   if (!presentationWindow || presentationWindow.closed) return;
   const theme = REVEAL_THEMES[$themeSelect.value]?.file?.replace('.css', '') || 'league';
-  try { presentationWindow.updateTheme(theme); } 
+  try { presentationWindow.updateTheme(theme); }
   catch (e) { console.error("Theme error:", e); }
 }
 
 function syncPresentationSlide() {
   if (presentationWindow && !presentationWindow.closed) {
     try { presentationWindow.goToSlide(currentSlideIndex); }
-     catch (e) { console.error("Sync error:", e); }
+    catch (e) { console.error("Sync error:", e); }
   }
 }
 
@@ -327,19 +358,18 @@ function stopRecording() {
     createSlide(currentSegmentBuffer.trim());
     currentSegmentBuffer = "";
   }
-
   isRecording = false;
   silenceCheckInterval && clearInterval(silenceCheckInterval);
   dataChannel?.close();
   peerConnection?.close();
   mediaStream?.getTracks().forEach(t => t.stop());
-  
   $recordBtn.classList.remove("btn-danger", "recording");
   $recordBtn.classList.add("btn-outline-danger");
   $recordBtn.querySelector("span").textContent = "Start Recording";
   $recordBtn.querySelector("i").className = "bi bi-record-circle me-2";
   updateStatus("disconnected", "Disconnected");
   $bufferStatus.textContent = "Paused";
+  updateControlsState();
 }
 
 const cleanup = stopRecording;

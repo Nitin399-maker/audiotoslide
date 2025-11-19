@@ -3,7 +3,6 @@ export const OUTPUT_STYLES = {
   default: {
     name: "Default Summary",
     systemPrompt: `Create ONE presentation slide in JSON format.
-
 RULES:
 - Extract key points from transcript ONLY
 - Vary format: bullets, numbered list, short paragraph, or key points
@@ -11,14 +10,12 @@ RULES:
 - Max 200 chars total
 - Use 2-4 emojis
 - Title: 3-5 words + emoji
-
 JSON format:
 {"title": "Title 📌", "content": "Formatted content"}`
   },
   corporate: {
     name: "Corporate Presentation",
     systemPrompt: `Create ONE corporate slide in JSON format.
-
 RULES:
 - Professional business content from transcript
 - give atleast four points for each slide with proper line breaks and emojis
@@ -26,14 +23,12 @@ RULES:
 - Max 200 chars
 - Use: 🎯📊✅💼📈
 - Title: 3-5 words + emoji
-
 JSON format:
 {"title": "Title 📊", "content": "Business content"}`
   },
   tweet: {
     name: "Tweet Style",
     systemPrompt: `Create ONE tweet-style slide in JSON format.
-
 RULES:
 - Conversational, shareable content
 - Vary format: single point, key quotes, or insights
@@ -41,14 +36,12 @@ RULES:
 - Max 200 chars
 - Use: 🔹💡✨🚀⚡
 - Title: 2-4 words + emoji
-
 JSON format:
 {"title": "Title 🔥", "content": "Tweet content"}`
   },
   poem: {
     name: "Poem Style",
     systemPrompt: `Create ONE poetic slide in JSON format.
-
 RULES:
 - Poetic expression from transcript
 - Vary format: haiku, couplets, free verse
@@ -56,14 +49,12 @@ RULES:
 - Max 200 chars
 - Use: 🌟💫✨⭐🎭
 - Title: 2-4 words + emoji
-
 JSON format:
 {"title": "Title 🌟", "content": "Poetic lines"}`
   },
   academic: {
     name: "Academic Paper",
     systemPrompt: `Create ONE academic slide in JSON format.
-
 RULES:
 - Scholarly presentation from transcript
 - Vary format: question, method, findings, conclusion
@@ -71,14 +62,12 @@ RULES:
 - Max 200 chars
 - Use: 📚🔬📊💡🎓
 - Title: 4-6 words + emoji
-
 JSON format:
 {"title": "Title 📚", "content": "Academic content"}`
   },
   storytelling: {
     name: "Storytelling",
     systemPrompt: `Create ONE narrative slide in JSON format.
-
 RULES:
 - Story-based content from transcript
 - Vary format: scene, moment, lesson, quote
@@ -86,14 +75,12 @@ RULES:
 - Max 200 chars
 - Use: 🎬⭐🎯📖🌈
 - Title: 3-5 words + emoji
-
 JSON format:
 {"title": "Title 🎬", "content": "Story content"}`
   },
   technical: {
     name: "Technical Documentation",
     systemPrompt: `Create ONE technical slide in JSON format.
-
 RULES:
 - Technical content from transcript
 - Vary format: specs, architecture, how-to
@@ -101,14 +88,12 @@ RULES:
 - Max 200 chars
 - Use: ⚙️🔧💻🖥️⚡
 - Title: 3-5 words + emoji
-
 JSON format:
 {"title": "Title ⚙️", "content": "Tech content"}`
   },
   marketing: {
     name: "Marketing Pitch",
     systemPrompt: `Create ONE marketing slide in JSON format.
-
 RULES:
 - Persuasive content from transcript
 - Vary format: value, benefits, results, CTA
@@ -116,14 +101,12 @@ RULES:
 - Max 200 chars
 - Use: 💎🚀✨📈🎁
 - Title: 2-4 words + emoji
-
 JSON format:
 {"title": "Title 💎", "content": "Marketing content"}`
   },
   eli5: {
     name: "Explain Like I'm 5",
     systemPrompt: `Create ONE simple slide in JSON format.
-
 RULES:
 - Simple explanation from transcript
 - Vary format: explanation, analogy, example
@@ -131,7 +114,6 @@ RULES:
 - Max 200 chars
 - Use: 🎈🎨⭐😊🌈
 - Title: 2-4 words + emoji
-
 JSON format:
 {"title": "Title 🎈", "content": "Simple content"}`
   }
@@ -155,12 +137,21 @@ export const REVEAL_THEMES = {
 export const MIN_CHARS_FOR_SLIDE = 200;
 export const SILENCE_THRESHOLD = 5000;
 
+// Custom prompt management
+export const getCustomPrompt = (styleKey) => {
+  const stored = localStorage.getItem(`customPrompt_${styleKey}`);
+  return stored || OUTPUT_STYLES[styleKey]?.systemPrompt || '';
+};
+
+export const setCustomPrompt = (styleKey, prompt) => {
+  localStorage.setItem(`customPrompt_${styleKey}`, prompt);
+};
+
 // Utility: Remove duplicate sentences
 export const removeDuplicateSentences = (text) => {
   const sentences = text.split(/([.!?]+\s+)/).filter(Boolean);
   const seen = new Set();
   const result = [];
-  
   for (let i = 0; i < sentences.length; i += 2) {
     const sentence = sentences[i]?.trim().toLowerCase();
     if (sentence && !seen.has(sentence)) {
@@ -168,7 +159,6 @@ export const removeDuplicateSentences = (text) => {
       result.push(sentences[i] + (sentences[i + 1] || ''));
     }
   }
-  
   return result.join('').trim();
 };
 
@@ -197,12 +187,10 @@ export const loadConfig = ($apiKey, $modelSelect, $styleSelect, $themeSelect) =>
   $themeSelect.value = config.theme || 'league';
 };
 
-
 export const createPresentationHTML = (slides, escapeHtml, themeFile) => {
   const slidesHTML = slides.length > 0
     ? slides.map(s => `<section><h2>${escapeHtml(s.title)}</h2><div class="slide-content">${escapeHtml(s.content)}</div></section>`).join('')
     : '<section><h2>🎤 Live Slides</h2><p>Start speaking...</p></section>';
-
   return `<!DOCTYPE html>
 <html><head><title>Live Presentation</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reset.css">
@@ -224,4 +212,18 @@ window.addSlide=(t,c)=>{const s=document.createElement('section');s.innerHTML='<
 window.goToSlide=i=>Reveal.slide(i);
 window.updateTheme=n=>document.getElementById('theme-link').href='https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/theme/'+n+'.css';
 </script></body></html>`;
+};
+
+// Download presentation as HTML file
+export const downloadPresentationHTML = (slides, escapeHtml, themeFile) => {
+  const html = createPresentationHTML(slides, escapeHtml, themeFile);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `live-slides-${new Date().toISOString().split('T')[0]}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };
