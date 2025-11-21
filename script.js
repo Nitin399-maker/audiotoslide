@@ -1,29 +1,27 @@
 import { bootstrapAlert } from "https://cdn.jsdelivr.net/npm/bootstrap-alert@1";
-import { OUTPUT_STYLES, REVEAL_THEMES, MIN_CHARS_FOR_SLIDE, SILENCE_THRESHOLD, removeDuplicateSentences, escapeHtml,
-  saveConfig, loadConfig, createPresentationHTML, downloadPresentationHTML, getCustomPrompt, setCustomPrompt
+import { DEFAULT_PROMPT, REVEAL_THEMES, escapeHtml, markdownToHtml, update,
+  createPresentationHTML, downloadPresentationHTML
 } from "./utils.js";
 
-const $apiKey = document.getElementById("api-key");
-const $modelSelect = document.getElementById("model-select");
-const $styleSelect = document.getElementById("style-select");
-const $themeSelect = document.getElementById("theme-select");
-const $recordBtn = document.getElementById("record-btn");
-const $prevSlideBtn = document.getElementById("prev-slide-btn");
-const $nextSlideBtn = document.getElementById("next-slide-btn");
-const $openPresentationBtn = document.getElementById("open-presentation-btn");
-const $downloadHtmlBtn = document.getElementById("download-html-btn");
-const $statusIndicator = document.getElementById("status-indicator");
-const $connectionStatus = document.getElementById("connection-status");
-const $slideCount = document.getElementById("slide-count");
-const $currentSlideNum = document.getElementById("current-slide-num");
-const $slidePreview = document.getElementById("slide-preview");
-const $transcriptBox = document.getElementById("transcript-box");
-const $bufferStatus = document.getElementById("buffer-status");
-const $configBtn = document.getElementById("config-btn");
-const $configModal = document.getElementById("config-modal");
-const $configOverlay = document.getElementById("config-overlay");
-const $closeConfigBtn = document.getElementById("close-config-btn");
-const $saveConfigBtn = document.getElementById("save-config-btn");
+const $ = id => document.getElementById(id);
+const $apiKey = $("api-key");
+const $modelSelect = $("model-select");
+const $themeSelect = $("theme-select");
+const $systemPrompt = $("system-prompt");
+const $initialTitle = $("initial-title");
+const $initialContent = $("initial-content");
+const $recordBtn = $("record-btn");
+const $prevSlideBtn = $("prev-slide-btn");
+const $nextSlideBtn = $("next-slide-btn");
+const $openPresentationBtn = $("open-presentation-btn");
+const $downloadHtmlBtn = $("download-html-btn");
+const $statusIndicator = $("status-indicator");
+const $connectionStatus = $("connection-status");
+const $slideCount = $("slide-count");
+const $currentSlideNum = $("current-slide-num");
+const $slidePreview = $("slide-preview");
+const $configModal = $("config-modal");
+const $configOverlay = $("config-overlay");
 
 let isRecording = false;
 let peerConnection = null;
@@ -32,263 +30,46 @@ let mediaStream = null;
 let presentationWindow = null;
 let slides = [];
 let currentSlideIndex = -1;
-let currentSegmentBuffer = "";
-let transcriptSegments = [];
-let processedTexts = new Set();
-let silenceCheckInterval = null;
-let lastSpeechTime = 0;
+let responses = {};
 
-function initializePromptEditors() {
-  Object.keys(OUTPUT_STYLES).forEach(styleKey => {
-    const textarea = document.getElementById(`prompt-textarea-${styleKey}`);
-    if (textarea) {
-      textarea.value = getCustomPrompt(styleKey);
-      textarea.oninput = () => {
-        setCustomPrompt(styleKey, textarea.value);
-      };
-    }
-  });
-}
+const saveConfig = () => localStorage.setItem('liveSlidesConfig', JSON.stringify({
+  apiKey: $apiKey.value,
+  model: $modelSelect.value,
+  theme: $themeSelect.value,
+  systemPrompt: $systemPrompt.value,
+  initialTitle: $initialTitle.value,
+  initialContent: $initialContent.value
+}));
 
-function updatePromptEditor() {
-  const selectedStyle = $styleSelect.value;
-  document.querySelectorAll('.prompt-section').forEach(section => {
-    section.classList.remove('active');
-  });
-  const activeSection = document.getElementById(`prompt-${selectedStyle}`);
-  if (activeSection) { activeSection.classList.add('active'); }
-}
-
-$configBtn.onclick = () => {
-  $configModal.classList.add("show");
-  $configOverlay.classList.add("show");
-  updatePromptEditor();
-};
-
-$closeConfigBtn.onclick = $configOverlay.onclick = () => {
-  $configModal.classList.remove("show");
-  $configOverlay.classList.remove("show");
-};
-
-$saveConfigBtn.onclick = () => {
-  saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
-  bootstrapAlert({ title: "Saved", body: "Configuration saved successfully.", color: "success" });
-  $configModal.classList.remove("show");
-  $configOverlay.classList.remove("show");
-  updateControlsState();
-};
-
-$apiKey.oninput = () => {
-  saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
-  updateControlsState();
-};
-
-$modelSelect.onchange = $styleSelect.onchange = () => {
-  saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
-  updatePromptEditor();
-};
-
-$themeSelect.onchange = () => {
-  saveConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
-  if (presentationWindow && !presentationWindow.closed) updatePresentationTheme();
+const loadConfig = () => {
+  const config = JSON.parse(localStorage.getItem('liveSlidesConfig') || '{}');
+  $apiKey.value = config.apiKey || '';
+  $modelSelect.value = config.model || 'gpt-4o-mini-realtime-preview-2024-12-17';
+  $themeSelect.value = config.theme || 'league';
+  $systemPrompt.value = config.systemPrompt || DEFAULT_PROMPT;
+  $initialTitle.value = config.initialTitle || '🎤 Live Slides';
+  $initialContent.value = config.initialContent || 'Start speaking...';
 };
 
 const updateControlsState = () => {
   const hasKey = !!$apiKey.value.trim();
   $recordBtn.disabled = !hasKey;
   $openPresentationBtn.disabled = !hasKey;
-  $downloadHtmlBtn.disabled = slides.length === 0;
+  $downloadHtmlBtn.disabled = !slides.length;
 };
 
-loadConfig($apiKey, $modelSelect, $styleSelect, $themeSelect);
-initializePromptEditors();
-updatePromptEditor();
-updateControlsState();
+const updateStatus = (status, text) => {
+  const colors = { disconnected: 'var(--bs-danger)', connecting: 'var(--bs-warning)', connected: 'var(--bs-success)' };
+  $statusIndicator.style.background = colors[status];
+  $connectionStatus.textContent = text;
+};
 
-$recordBtn.onclick = () => isRecording ? stopRecording() : startRecording();
-$prevSlideBtn.onclick = () => navigateSlide(-1);
-$nextSlideBtn.onclick = () => navigateSlide(1);
-$openPresentationBtn.onclick = openPresentationWindow;
-$downloadHtmlBtn.onclick = downloadSlides;
-
-function downloadSlides() {
-  const themeFile = REVEAL_THEMES[$themeSelect.value]?.file || "league.css";
-  downloadPresentationHTML(slides, escapeHtml, themeFile);
-  bootstrapAlert({ title: "Downloaded", body: "Presentation downloaded successfully!", color: "success" });
-}
-
-async function startRecording() {
-  try {
-    updateStatus("connecting", "Connecting...");
-    currentSegmentBuffer = "";
-    transcriptSegments = [];
-    processedTexts.clear();
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    peerConnection = new RTCPeerConnection();
-    mediaStream.getAudioTracks().forEach(track => peerConnection.addTrack(track, mediaStream));
-    dataChannel = peerConnection.createDataChannel("oai-events");
-    setupDataChannel();
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    const response = await fetch(`https://api.openai.com/v1/realtime?model=${$modelSelect.value}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${$apiKey.value.trim()}`,
-        "Content-Type": "application/sdp",
-      },
-      body: offer.sdp,
-    });
-    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-    await peerConnection.setRemoteDescription({ type: "answer", sdp: await response.text() });
-    isRecording = true;
-    $recordBtn.classList.add("btn-danger", "recording");
-    $recordBtn.classList.remove("btn-outline-danger");
-    $recordBtn.querySelector("span").textContent = "Stop Recording";
-    $recordBtn.querySelector("i").className = "bi bi-stop-circle me-2";
-    updateStatus("connected", "Connected");
-    lastSpeechTime = Date.now();
-    silenceCheckInterval = setInterval(checkSilence, 1000);
-    if (!presentationWindow || presentationWindow.closed) openPresentationWindow();
-  } catch (error) {
-    bootstrapAlert({ title: "Failed", body: error.message, color: "danger" });
-    cleanup();
-    updateStatus("disconnected", "Failed");
-  }
-}
-
-function setupDataChannel() {
-  dataChannel.onopen = () => {
-    dataChannel.send(JSON.stringify({
-      type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        instructions: "Transcribe speech accurately.",
-        input_audio_transcription: { model: "whisper-1" },
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
-        },
-      },
-    }));
-  };
-  dataChannel.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === "conversation.item.input_audio_transcription.completed" && msg.transcript) {
-      addTranscript(msg.transcript);
-    } else if (msg.type === "input_audio_buffer.speech_started") {
-      lastSpeechTime = Date.now();
-      $bufferStatus.textContent = "Listening...";
-    } else if (msg.type === "error") {
-      console.error("API Error:", msg.error);
-      bootstrapAlert({ title: "Error", body: msg.error?.message || "Unknown error", color: "danger" });
-    }
-  };
-  dataChannel.onclose = () => isRecording && stopRecording();
-  dataChannel.onerror = () => bootstrapAlert({ title: "Error", body: "Data channel error", color: "danger" });
-}
-
-function addTranscript(text) {
-  const cleaned = text.trim();
-  if (!cleaned) return;
-  const textHash = cleaned.toLowerCase();
-  if (processedTexts.has(textHash)) return;
-  processedTexts.add(textHash);
-  const timestamp = new Date().toLocaleTimeString();
-  currentSegmentBuffer += cleaned + " ";
-  transcriptSegments.push({ text: cleaned, timestamp });
-  lastSpeechTime = Date.now();
-  updateTranscriptDisplay();
-  checkSlideGeneration();
-}
-
-function updateTranscriptDisplay() {
-  $transcriptBox.innerHTML = transcriptSegments.map(seg => `
-    <div class="mb-2">
-      <span class="badge bg-secondary me-2">${seg.timestamp}</span>
-      <span class="text-body">${escapeHtml(seg.text)}</span>
-    </div>
-  `).join('') || '<span class="text-muted">Waiting for speech...</span>';
-  $transcriptBox.scrollTop = $transcriptBox.scrollHeight;
-  $bufferStatus.textContent = `Buffer: ${currentSegmentBuffer.length} chars`;
-}
-
-function checkSlideGeneration() {
-  if (currentSegmentBuffer.length < MIN_CHARS_FOR_SLIDE) return;
-  const match = currentSegmentBuffer.match(/^(.*[.!?])\s+(.*)$/s);
-  if (match) {
-    const [, complete, remaining] = match;
-    createSlide(complete);
-    currentSegmentBuffer = remaining.trim();
-  }
-}
-
-function checkSilence() {
-  if (Date.now() - lastSpeechTime >= SILENCE_THRESHOLD && currentSegmentBuffer.trim()) {
-    createSlide(currentSegmentBuffer.trim());
-    currentSegmentBuffer = "";
-  }
-}
-
-async function createSlide(content) {
-  if (!content?.trim()) return;
-  const cleanedContent = removeDuplicateSentences(content);
-  if (!cleanedContent) return;
-  $bufferStatus.textContent = "Generating slide...";
-  const slideData = await generateSlide(cleanedContent);
-  if (!slideData) return;
-  slides.push({
-    title: slideData.title,
-    content: slideData.content,
-    originalContent: cleanedContent,
-    style: $styleSelect.value,
-    timestamp: new Date().toISOString(),
-  });
-  currentSlideIndex = slides.length - 1;
-  updateSlideCount();
-  updateSlidePreview();
-  updatePresentationWindow();
-  updateControlsState();
-  $prevSlideBtn.disabled = slides.length <= 1;
-  $nextSlideBtn.disabled = true;
-  $bufferStatus.textContent = `Buffer: ${currentSegmentBuffer.length} chars`;
-}
-
-async function generateSlide(content) {
-  const apiKey = $apiKey.value.trim();
-  const customPrompt = getCustomPrompt($styleSelect.value);
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: customPrompt },
-          { role: "user", content: content }
-        ],
-        response_format: { type: "json_object" }
-      }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    const result = JSON.parse(data.choices[0].message.content);
-    return { title: result.title || "📌 Key Point", content: result.content || content };
-  } catch (error) {
-    throw new Error("Slide generation failed: " + error.message);
-  }
-}
-
-function updateSlideCount() {
+const updateSlideCount = () => {
   $slideCount.textContent = slides.length;
   $currentSlideNum.textContent = currentSlideIndex >= 0 ? currentSlideIndex + 1 : "-";
-}
+};
 
-function updateSlidePreview() {
+const updateSlidePreview = () => {
   if (currentSlideIndex < 0) {
     $slidePreview.innerHTML = '<p class="text-muted text-center">No slides yet.</p>';
     return;
@@ -297,12 +78,25 @@ function updateSlidePreview() {
   $slidePreview.innerHTML = `
     <h4 class="text-primary">${escapeHtml(slide.title)}</h4>
     <hr>
-    <div style="white-space: pre-line; font-size: 0.95rem;">${escapeHtml(slide.content)}</div>
-    <small class="text-muted d-block mt-2">Style: ${OUTPUT_STYLES[slide.style]?.name}</small>
+    <div style="font-size: 0.95rem;">${markdownToHtml(slide.content)}</div>
   `;
-}
+};
 
-function navigateSlide(direction) {
+const syncPresentationSlide = () => {
+  if (presentationWindow && !presentationWindow.closed) {
+    try { presentationWindow.goToSlide(currentSlideIndex); }
+    catch (e) { console.error("Sync error:", e); }
+  }
+};
+
+const updatePresentationWindow = () => {
+  if (!presentationWindow || presentationWindow.closed) return;
+  const slide = slides[slides.length - 1];
+  try { presentationWindow.addSlide(escapeHtml(slide.title), markdownToHtml(slide.content)); }
+  catch (e) { console.error("Update error:", e); }
+};
+
+const navigateSlide = direction => {
   const newIndex = currentSlideIndex + direction;
   if (newIndex >= 0 && newIndex < slides.length) {
     currentSlideIndex = newIndex;
@@ -312,54 +106,119 @@ function navigateSlide(direction) {
     $prevSlideBtn.disabled = currentSlideIndex === 0;
     $nextSlideBtn.disabled = currentSlideIndex === slides.length - 1;
   }
-}
+};
 
-function openPresentationWindow() {
-  if (presentationWindow && !presentationWindow.closed) return presentationWindow.focus();
-  const themeFile = REVEAL_THEMES[$themeSelect.value]?.file || "league.css";
-  const html = createPresentationHTML(slides, escapeHtml, themeFile);
-  const [width, height] = [800, 600];
-  presentationWindow = window.open(
-    "",
-    "LiveSlidesPresentation",
-    `width=${width},height=${height},left=${(screen.width - width) / 2},top=${(screen.height - height) / 2},scrollbars=no,resizable=yes`
-  );
-  if (!presentationWindow) {
-    return bootstrapAlert({ title: "Popup Blocked", body: "Allow popups for this site.", color: "warning" });
+const handleAIResponse = responseText => {
+  if (!responseText?.trim()) return;
+  
+  // Try to extract JSON from the response (handle cases where AI adds extra text)
+  let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error("No JSON found in response:", responseText);
+    bootstrapAlert({ title: "Invalid Response", body: "AI did not return valid JSON.", color: "warning" });
+    return;
   }
-  presentationWindow.document.write(html);
-  presentationWindow.document.close();
-  presentationWindow.onload = syncPresentationSlide;
-}
 
-function updatePresentationWindow() {
-  if (!presentationWindow || presentationWindow.closed) return;
-  const slide = slides[slides.length - 1];
-  try { presentationWindow.addSlide(escapeHtml(slide.title), escapeHtml(slide.content)); }
-  catch (e) { console.error("Update error:", e); }
-}
+  try {
+    const slideData = JSON.parse(jsonMatch[0]);
+    if (!slideData.title || !slideData.content) throw new Error("Invalid JSON structure");
+    
+    slides.push({ title: slideData.title, content: slideData.content, timestamp: new Date().toISOString() });
+    currentSlideIndex = slides.length - 1;
+    updateSlideCount();
+    updateSlidePreview();
+    updatePresentationWindow();
+    updateControlsState();
+    $prevSlideBtn.disabled = slides.length <= 1;
+    $nextSlideBtn.disabled = true;
+    bootstrapAlert({ title: "Slide Created", body: `"${slideData.title}"`, color: "success", timeout: 2000 });
+  } catch (e) {
+    console.error("Invalid JSON:", jsonMatch[0], e);
+    bootstrapAlert({ title: "Invalid Response", body: "AI returned malformed JSON. Check system prompt.", color: "warning" });
+  }
+};
 
-function updatePresentationTheme() {
-  if (!presentationWindow || presentationWindow.closed) return;
-  const theme = REVEAL_THEMES[$themeSelect.value]?.file?.replace('.css', '') || 'league';
-  try { presentationWindow.updateTheme(theme); }
-  catch (e) { console.error("Theme error:", e); }
-}
+const setupDataChannel = () => {
+  dataChannel.onopen = () => dataChannel.send(JSON.stringify({
+    type: "session.update",
+    session: {
+      modalities: ["text"],
+      instructions: $systemPrompt.value || DEFAULT_PROMPT,
+      voice: "alloy",
+      turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1000 }
+    }
+  }));
 
-function syncPresentationSlide() {
-  if (presentationWindow && !presentationWindow.closed) {
-    try { presentationWindow.goToSlide(currentSlideIndex); }
-    catch (e) { console.error("Sync error:", e); }
+  dataChannel.onmessage = event => {
+    const msg = JSON.parse(event.data);
+    const r = responses;
+    
+    if (msg.type.match(/^response\.(created|done)$/)) r[msg.response.id] = msg.response;
+    else if (msg.type.match(/^response\.output_item\.(added|done)$/)) {
+      r[msg.response_id].output = r[msg.response_id].output || [];
+      r[msg.response_id].output[msg.output_index] = msg.item;
+    }
+    else if (msg.type.match(/^response\.content_part\.(added|done)$/)) {
+      r[msg.response_id].output[msg.output_index].content = r[msg.response_id].output[msg.output_index].content || [];
+      r[msg.response_id].output[msg.output_index].content[msg.content_index] = msg.part;
+    }
+    else if (msg.type === "response.text.delta") {
+      // Accumulate text deltas
+      update(r[msg.response_id].output[msg.output_index].content[msg.content_index], "text", msg);
+    }
+    else if (msg.type === "response.text.done") {
+      // Only process when complete
+      const fullText = r[msg.response_id].output[msg.output_index].content[msg.content_index].text;
+      handleAIResponse(fullText);
+    }
+    else if (msg.type === "error") {
+      console.error("API Error:", msg.error);
+      bootstrapAlert({ title: "Error", body: msg.error?.message || "Unknown error", color: "danger" });
+    }
+  };
+
+  dataChannel.onclose = () => isRecording && stopRecording();
+  dataChannel.onerror = () => bootstrapAlert({ title: "Error", body: "Data channel error", color: "danger" });
+};
+
+async function startRecording() {
+  try {
+    updateStatus("connecting", "Connecting...");
+    responses = {};
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    peerConnection = new RTCPeerConnection();
+    mediaStream.getAudioTracks().forEach(track => peerConnection.addTrack(track, mediaStream));
+    dataChannel = peerConnection.createDataChannel("oai-events");
+    setupDataChannel();
+    
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    
+    const response = await fetch(`https://api.openai.com/v1/realtime?model=${$modelSelect.value}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${$apiKey.value.trim()}`, "Content-Type": "application/sdp" },
+      body: offer.sdp
+    });
+    
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    await peerConnection.setRemoteDescription({ type: "answer", sdp: await response.text() });
+    
+    isRecording = true;
+    $recordBtn.classList.add("btn-danger", "recording");
+    $recordBtn.classList.remove("btn-outline-danger");
+    $recordBtn.querySelector("span").textContent = "Stop Recording";
+    $recordBtn.querySelector("i").className = "bi bi-stop-circle me-2";
+    updateStatus("connected", "Connected");
+    if (!presentationWindow || presentationWindow.closed) openPresentationWindow();
+  } catch (error) {
+    bootstrapAlert({ title: "Failed", body: error.message, color: "danger" });
+    cleanup();
+    updateStatus("disconnected", "Failed");
   }
 }
 
 function stopRecording() {
-  if (currentSegmentBuffer.trim()) {
-    createSlide(currentSegmentBuffer.trim());
-    currentSegmentBuffer = "";
-  }
   isRecording = false;
-  silenceCheckInterval && clearInterval(silenceCheckInterval);
   dataChannel?.close();
   peerConnection?.close();
   mediaStream?.getTracks().forEach(t => t.stop());
@@ -368,18 +227,54 @@ function stopRecording() {
   $recordBtn.querySelector("span").textContent = "Start Recording";
   $recordBtn.querySelector("i").className = "bi bi-record-circle me-2";
   updateStatus("disconnected", "Disconnected");
-  $bufferStatus.textContent = "Paused";
   updateControlsState();
 }
 
-const cleanup = stopRecording;
-
-function updateStatus(status, text) {
-  $statusIndicator.className = `status-indicator status-${status}`;
-  $connectionStatus.textContent = text;
+function openPresentationWindow() {
+  if (presentationWindow && !presentationWindow.closed) return presentationWindow.focus();
+  
+  const themeFile = REVEAL_THEMES[$themeSelect.value] || "league.css";
+  const html = createPresentationHTML(slides, $initialTitle.value || '🎤 Live Slides', $initialContent.value || 'Start speaking...', themeFile);
+  const [width, height] = [800, 600];
+  
+  presentationWindow = window.open("", "LiveSlidesPresentation",
+    `width=${width},height=${height},left=${(screen.width - width) / 2},top=${(screen.height - height) / 2},scrollbars=no,resizable=yes`
+  );
+  
+  if (!presentationWindow) return bootstrapAlert({ title: "Popup Blocked", body: "Allow popups for this site.", color: "warning" });
+  presentationWindow.document.write(html);
+  presentationWindow.document.close();
+  presentationWindow.onload = syncPresentationSlide;
 }
 
-window.onbeforeunload = () => {
-  cleanup();
-  presentationWindow?.close();
+const downloadSlides = () => {
+  downloadPresentationHTML(slides, $initialTitle.value || '🎤 Live Slides', $initialContent.value || 'Start speaking...', REVEAL_THEMES[$themeSelect.value] || "league.css");
+  bootstrapAlert({ title: "Downloaded", body: "Presentation downloaded successfully!", color: "success" });
 };
+
+const cleanup = stopRecording;
+
+// Modal Controls
+$("config-btn").onclick = () => { $configModal.classList.add("show"); $configOverlay.classList.add("show"); };
+$("close-config-btn").onclick = $configOverlay.onclick = () => { $configModal.classList.remove("show"); $configOverlay.classList.remove("show"); };
+$("save-config-btn").onclick = () => {
+  saveConfig();
+  bootstrapAlert({ title: "Saved", body: "Configuration saved successfully.", color: "success" });
+  $configModal.classList.remove("show");
+  $configOverlay.classList.remove("show");
+  updateControlsState();
+};
+
+// Event Listeners
+$apiKey.oninput = () => { saveConfig(); updateControlsState(); };
+$modelSelect.onchange = $themeSelect.onchange = $systemPrompt.oninput = $initialTitle.oninput = $initialContent.oninput = saveConfig;
+$recordBtn.onclick = () => isRecording ? stopRecording() : startRecording();
+$prevSlideBtn.onclick = () => navigateSlide(-1);
+$nextSlideBtn.onclick = () => navigateSlide(1);
+$openPresentationBtn.onclick = openPresentationWindow;
+$downloadHtmlBtn.onclick = downloadSlides;
+window.onbeforeunload = () => { cleanup(); presentationWindow?.close(); };
+
+// Initialize
+loadConfig();
+updateControlsState();

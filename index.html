@@ -11,12 +11,6 @@
 .recording-btn.recording { animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
 .slide-preview { background: #1e1e1e; border: 2px solid #495057; color: #f8f9fa; border-radius: 8px; min-height: 200px; padding: 1rem; font-size: 0.9rem; overflow: auto; max-height: 400px; }
-.transcript-box { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 8px; min-height: 100px; max-height: 200px; overflow-y: auto; padding: 0.75rem; font-family: monospace; font-size: 0.85rem; }
-.status-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 0.5rem; }
-.status-disconnected { background: var(--bs-danger); }
-.status-connecting { background: var(--bs-warning); animation: blink 1s infinite; }
-.status-connected { background: var(--bs-success); }
-@keyframes blink { 50% { opacity: 0.5; } }
 .config-modal { display: none; position: fixed; z-index: 9999; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 600px; max-height: 80vh; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); overflow-y: auto; }
 .config-modal.show { display: block; }
 .config-overlay { display: none; position: fixed; z-index: 9998; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); }
@@ -24,15 +18,13 @@
 .config-modal-header { padding: 1rem; border-bottom: 1px solid var(--bs-border-color); display: flex; justify-content: space-between; align-items: center; }
 .config-modal-body { padding: 1rem; max-height: 60vh; overflow-y: auto; }
 .prompt-editor { min-height: 150px; font-family: monospace; font-size: 0.85rem; }
-.prompt-section { display: none; }
-.prompt-section.active { display: block; }
   </style>
 </head>
 <body>
   <nav class="navbar navbar-expand-lg">
     <div class="container-fluid">
       <a class="navbar-brand" href="."> <i class="bi bi-easel me-2"></i>Live Slides </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarContent">
@@ -44,13 +36,12 @@
       </div>
     </div>
   </nav>
-  
-  <!-- Config Modal -->
+
   <div class="config-overlay" id="config-overlay"></div>
   <div class="config-modal" id="config-modal">
     <div class="config-modal-header">
       <h5 class="mb-0"><i class="bi bi-key me-2"></i>Configuration</h5>
-      <button type="button" class="btn-close" id="close-config-btn" aria-label="Close"></button>
+      <button type="button" class="btn-close" id="close-config-btn"></button>
     </div>
     <div class="config-modal-body">
       <form id="config-form">
@@ -60,62 +51,28 @@
           <div class="form-text">Your key is stored locally in your browser.</div>
         </div>
         <div class="mb-3">
-          <label for="model-select" class="form-label">LLM Model</label>
+          <label for="model-select" class="form-label">Realtime Model</label>
           <select class="form-select" id="model-select">
             <option value="gpt-4o-mini-realtime-preview-2024-12-17">GPT-4o-mini Realtime (Recommended)</option>
             <option value="gpt-4o-realtime-preview-2024-12-17">GPT-4o Realtime</option>
           </select>
         </div>
         <div class="mb-3">
-          <label for="style-select" class="form-label">Output Style</label>
-          <select class="form-select" id="style-select">
-            <option value="default">Default Summary</option>
-            <option value="corporate">Corporate Presentation</option>
-            <option value="tweet">Tweet Style</option>
-            <option value="poem">Poem Style</option>
-            <option value="academic">Academic Paper</option>
-            <option value="storytelling">Storytelling</option>
-            <option value="technical">Technical Documentation</option>
-            <option value="marketing">Marketing Pitch</option>
-            <option value="eli5">Explain Like I'm 5</option>
-          </select>
+          <label for="initial-title" class="form-label">Initial Slide Title</label>
+          <input type="text" class="form-control" id="initial-title" placeholder="Live Slides" />
+          <div class="form-text">Customize the first slide title (e.g., "Grammar All Hands")</div>
         </div>
-        
-        <!-- Prompt Editor Section -->
-        <div class="mb-3" id="prompt-editor-section">
-          <label class="form-label">
-            <i class="bi bi-pencil-square me-1"></i>Edit Style Prompt
+        <div class="mb-3">
+          <label for="initial-content" class="form-label">Initial Slide Content</label>
+          <textarea class="form-control" id="initial-content" rows="2" placeholder="Start speaking..."></textarea>
+        </div>
+        <div class="mb-3">
+          <label for="system-prompt" class="form-label">
+            <i class="bi bi-pencil-square me-1"></i>System Prompt
           </label>
-          <div class="prompt-section active" id="prompt-default">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-default" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-corporate">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-corporate" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-tweet">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-tweet" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-poem">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-poem" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-academic">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-academic" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-storytelling">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-storytelling" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-technical">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-technical" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-marketing">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-marketing" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="prompt-section" id="prompt-eli5">
-            <textarea class="form-control prompt-editor" id="prompt-textarea-eli5" placeholder="Style prompt will appear here..."></textarea>
-          </div>
-          <div class="form-text">Customize the AI prompt for generating slides in the selected style.</div>
+          <textarea class="form-control prompt-editor" id="system-prompt"></textarea>
+          <div class="form-text">Instructions for generating slide title and content from speech</div>
         </div>
-        
         <div class="mb-3">
           <label for="theme-select" class="form-label">Presentation Theme</label>
           <select class="form-select" id="theme-select">
@@ -132,7 +89,7 @@
       </form>
     </div>
   </div>
-  
+
   <div class="container py-4">
     <div class="row">
       <div class="col-lg-4">
@@ -142,7 +99,7 @@
           </div>
           <div class="card-body">
             <div class="mb-2">
-              <span class="status-indicator status-disconnected" id="status-indicator"></span>
+              <span class="status-indicator status-disconnected" id="status-indicator" style="width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 0.5rem; background: var(--bs-danger);"></span>
               <span id="connection-status">Disconnected</span>
             </div>
             <div class="mb-2">
@@ -174,7 +131,7 @@
         </div>
       </div>
       <div class="col-lg-8">
-        <div class="card mb-4">
+        <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="bi bi-easel3 me-2"></i>Current Slide Preview</h5>
             <div class="btn-group" role="group">
@@ -188,31 +145,15 @@
           </div>
           <div class="card-body">
             <div class="slide-preview" id="slide-preview">
-              <p class="text-muted text-center">
-                No slides yet. Start recording to generate slides from your speech.
-              </p>
+              <p class="text-muted text-center">No slides yet. Start recording to generate slides from your speech.</p>
             </div>
           </div>
         </div>
-      <div class="card">
-        <div class="card-header">
-          <h5 class="mb-0"><i class="bi bi-chat-left-text me-2"></i>Live Transcript</h5>
-        </div>
-        <div class="card-body">
-          <div class="border rounded p-3 bg-body-tertiary" style="min-height: 100px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;" id="transcript-box">
-            <span class="text-muted">Waiting for speech...</span>
-          </div>
-          <div class="mt-2">
-            <small class="text-muted" id="buffer-status">Buffer: Empty</small>
-          </div>
-        </div>
-      </div>
       </div>
     </div>
   </div>
   <div class="toast-container position-fixed bottom-0 end-0 p-3"></div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"></script>
   <script type="module" src="script.js"></script>
-  <script type="module" src="utils.js"></script>
 </body>
 </html>
