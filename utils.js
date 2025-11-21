@@ -1,16 +1,15 @@
 // utils.js
 
 // Constants
-export const DEFAULT_PROMPT = `You are a presentation slide generator. Listen to the user's speech and when they pause, automatically generate a slide summarizing what they just said.
+export const DEFAULT_PROMPT = `You are a presentation slide generator.
+Listen to the user's speech and when they pause or have spoken 20-30 words, generate a slide summarizing what they just said.
 
 Return ONLY a JSON object with this exact format:
-{"title": "Short Title 📌", "content": "• Point 1\\n• Point 2\\n• Point 3"}
+{"title": "Short Title 📌", "content": "- Point 1\n- Point 2\n• Point 3"}
 
 Rules:
-- Title: 3-5 words with one emoji
-- Content: 2-4 bullet points, max 200 chars total
-- Extract key insights from what the user said
-- Be concise and clear`;
+- Title: 3-10 words that summarizes the message. Optional emoji
+- Content: 2-4 bullet points or paragraphs, <=200 chars. Proves the title`;
 
 export const REVEAL_THEMES = {
   league: "league.css",

@@ -53,18 +53,20 @@
         <div class="mb-3">
           <label for="model-select" class="form-label">Realtime Model</label>
           <select class="form-select" id="model-select">
-            <option value="gpt-4o-mini-realtime-preview-2024-12-17">GPT-4o-mini Realtime (Recommended)</option>
+            <option value="gpt-realtime-mini">GPT Realtime Mini</option>
+            <option value="gpt-realtime">GPT Realtime</option>
+            <option value="gpt-4o-mini-realtime-preview-2024-12-17">GPT-4o-mini Realtime</option>
             <option value="gpt-4o-realtime-preview-2024-12-17">GPT-4o Realtime</option>
           </select>
         </div>
         <div class="mb-3">
           <label for="initial-title" class="form-label">Initial Slide Title</label>
-          <input type="text" class="form-control" id="initial-title" placeholder="Live Slides" />
-          <div class="form-text">Customize the first slide title (e.g., "Grammar All Hands")</div>
+          <input type="text" class="form-control" id="initial-title" value="🎤 Live Slides"/>
+          <div class="form-text">Customize the first slide title (e.g., "Town Hall")</div>
         </div>
         <div class="mb-3">
           <label for="initial-content" class="form-label">Initial Slide Content</label>
-          <textarea class="form-control" id="initial-content" rows="2" placeholder="Start speaking..."></textarea>
+          <textarea class="form-control" id="initial-content" rows="2" value="Start speaking..."></textarea>
         </div>
         <div class="mb-3">
           <label for="system-prompt" class="form-label">

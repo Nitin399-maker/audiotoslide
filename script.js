@@ -32,6 +32,8 @@ let slides = [];
 let currentSlideIndex = -1;
 let responses = {};
 
+const val = el => el.value || el.getAttribute("value");
+
 const saveConfig = () => localStorage.setItem('liveSlidesConfig', JSON.stringify({
   apiKey: $apiKey.value,
   model: $modelSelect.value,
@@ -44,11 +46,11 @@ const saveConfig = () => localStorage.setItem('liveSlidesConfig', JSON.stringify
 const loadConfig = () => {
   const config = JSON.parse(localStorage.getItem('liveSlidesConfig') || '{}');
   $apiKey.value = config.apiKey || '';
-  $modelSelect.value = config.model || 'gpt-4o-mini-realtime-preview-2024-12-17';
-  $themeSelect.value = config.theme || 'league';
-  $systemPrompt.value = config.systemPrompt || DEFAULT_PROMPT;
-  $initialTitle.value = config.initialTitle || '🎤 Live Slides';
-  $initialContent.value = config.initialContent || 'Start speaking...';
+  $modelSelect.value = config.model || $modelSelect.getAttribute("value");
+  $themeSelect.value = config.theme || $themeSelect.getAttribute("value");
+  $systemPrompt.value = config.systemPrompt || $systemPrompt.getAttribute("value");
+  $initialTitle.value = config.initialTitle || $initialTitle.getAttribute("value");
+  $initialContent.value = config.initialContent || $initialContent.getAttribute("value");
 };
 
 const updateControlsState = () => {
@@ -110,7 +112,7 @@ const navigateSlide = direction => {
 
 const handleAIResponse = responseText => {
   if (!responseText?.trim()) return;
-  
+
   // Try to extract JSON from the response (handle cases where AI adds extra text)
   let jsonMatch = responseText.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
@@ -122,7 +124,7 @@ const handleAIResponse = responseText => {
   try {
     const slideData = JSON.parse(jsonMatch[0]);
     if (!slideData.title || !slideData.content) throw new Error("Invalid JSON structure");
-    
+
     slides.push({ title: slideData.title, content: slideData.content, timestamp: new Date().toISOString() });
     currentSlideIndex = slides.length - 1;
     updateSlideCount();
@@ -143,7 +145,7 @@ const setupDataChannel = () => {
     type: "session.update",
     session: {
       modalities: ["text"],
-      instructions: $systemPrompt.value || DEFAULT_PROMPT,
+      instructions: val($systemPrompt),
       voice: "alloy",
       turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 1000 }
     }
@@ -152,7 +154,7 @@ const setupDataChannel = () => {
   dataChannel.onmessage = event => {
     const msg = JSON.parse(event.data);
     const r = responses;
-    
+
     if (msg.type.match(/^response\.(created|done)$/)) r[msg.response.id] = msg.response;
     else if (msg.type.match(/^response\.output_item\.(added|done)$/)) {
       r[msg.response_id].output = r[msg.response_id].output || [];
@@ -190,19 +192,19 @@ async function startRecording() {
     mediaStream.getAudioTracks().forEach(track => peerConnection.addTrack(track, mediaStream));
     dataChannel = peerConnection.createDataChannel("oai-events");
     setupDataChannel();
-    
+
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
-    
+
     const response = await fetch(`https://api.openai.com/v1/realtime?model=${$modelSelect.value}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${$apiKey.value.trim()}`, "Content-Type": "application/sdp" },
       body: offer.sdp
     });
-    
+
     if (!response.ok) throw new Error(`API Error: ${response.status}`);
     await peerConnection.setRemoteDescription({ type: "answer", sdp: await response.text() });
-    
+
     isRecording = true;
     $recordBtn.classList.add("btn-danger", "recording");
     $recordBtn.classList.remove("btn-outline-danger");
@@ -232,15 +234,15 @@ function stopRecording() {
 
 function openPresentationWindow() {
   if (presentationWindow && !presentationWindow.closed) return presentationWindow.focus();
-  
-  const themeFile = REVEAL_THEMES[$themeSelect.value] || "league.css";
-  const html = createPresentationHTML(slides, $initialTitle.value || '🎤 Live Slides', $initialContent.value || 'Start speaking...', themeFile);
+
+  const themeFile = REVEAL_THEMES[val($themeSelect)];
+  const html = createPresentationHTML(slides, val($initialTitle), val($initialContent), themeFile);
   const [width, height] = [800, 600];
-  
+
   presentationWindow = window.open("", "LiveSlidesPresentation",
     `width=${width},height=${height},left=${(screen.width - width) / 2},top=${(screen.height - height) / 2},scrollbars=no,resizable=yes`
   );
-  
+
   if (!presentationWindow) return bootstrapAlert({ title: "Popup Blocked", body: "Allow popups for this site.", color: "warning" });
   presentationWindow.document.write(html);
   presentationWindow.document.close();
@@ -248,7 +250,7 @@ function openPresentationWindow() {
 }
 
 const downloadSlides = () => {
-  downloadPresentationHTML(slides, $initialTitle.value || '🎤 Live Slides', $initialContent.value || 'Start speaking...', REVEAL_THEMES[$themeSelect.value] || "league.css");
+  downloadPresentationHTML(slides, val($initialTitle), val($initialContent), REVEAL_THEMES[val($themeSelect)]);
   bootstrapAlert({ title: "Downloaded", body: "Presentation downloaded successfully!", color: "success" });
 };
 
