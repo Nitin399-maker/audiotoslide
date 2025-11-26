@@ -2,6 +2,7 @@ import { bootstrapAlert } from "https://cdn.jsdelivr.net/npm/bootstrap-alert@1";
 import { DEFAULT_PROMPT, REVEAL_THEMES, escapeHtml, markdownToHtml, update,
   createPresentationHTML, downloadPresentationHTML
 } from "./utils.js";
+
 const $ = id => document.getElementById(id);
 const $apiKey = $("api-key");
 const $modelSelect = $("model-select");
@@ -29,6 +30,7 @@ let presentationWindow = null;
 let slides = [];
 let currentSlideIndex = -1;
 let responses = {};
+
 const val = el => el.value || el.getAttribute("value");
 const logEvent = (direction, eventType, data) => {
   console.log(`[${new Date().toISOString()}] [${direction}] ${eventType}`);
@@ -51,21 +53,25 @@ const loadConfig = () => {
   $initialTitle.value = config.initialTitle || $initialTitle.getAttribute("value");
   $initialContent.value = config.initialContent || $initialContent.getAttribute("value");
 };
+
 const updateControlsState = () => {
   const hasKey = !!$apiKey.value.trim();
   $recordBtn.disabled = !hasKey;
   $openPresentationBtn.disabled = !hasKey;
   $downloadHtmlBtn.disabled = !slides.length;
 };
+
 const updateStatus = (status, text) => {
   const colors = { disconnected: 'var(--bs-danger)', connecting: 'var(--bs-warning)', connected: 'var(--bs-success)' };
   $statusIndicator.style.background = colors[status];
   $connectionStatus.textContent = text;
 };
+
 const updateSlideCount = () => {
   $slideCount.textContent = slides.length;
   $currentSlideNum.textContent = currentSlideIndex >= 0 ? currentSlideIndex + 1 : "-";
 };
+
 const updateSlidePreview = () => {
   if (currentSlideIndex < 0) {
     $slidePreview.innerHTML = '<p class="text-muted text-center">No slides yet.</p>';
@@ -84,12 +90,14 @@ const syncPresentationSlide = () => {
     catch (e) { console.error("Sync error:", e); }
   }
 };
+
 const updatePresentationWindow = () => {
   if (!presentationWindow || presentationWindow.closed) return;
   const slide = slides[slides.length - 1];
   try { presentationWindow.addSlide(escapeHtml(slide.title), markdownToHtml(slide.content)); }
   catch (e) { console.error("Update error:", e); }
 };
+
 const navigateSlide = direction => {
   const newIndex = currentSlideIndex + direction;
   if (newIndex >= 0 && newIndex < slides.length) {
@@ -101,6 +109,7 @@ const navigateSlide = direction => {
     $nextSlideBtn.disabled = currentSlideIndex === slides.length - 1;
   }
 };
+
 const handleAIResponse = responseText => {
   if (!responseText?.trim()) return;
   let jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -109,6 +118,7 @@ const handleAIResponse = responseText => {
     bootstrapAlert({ title: "Invalid Response", body: "AI did not return valid JSON.", color: "warning" });
     return;
   }
+
   try {
     const slideData = JSON.parse(jsonMatch[0]);
     if (!slideData.title || !slideData.content) throw new Error("Invalid JSON structure");
@@ -126,6 +136,7 @@ const handleAIResponse = responseText => {
     bootstrapAlert({ title: "Invalid Response", body: "Malformed JSON returned by AI.", color: "warning" });
   }
 };
+
 const setupDataChannel = () => {
   window.send = text => {
     if (dataChannel && dataChannel.readyState === "open") {
@@ -195,9 +206,11 @@ const setupDataChannel = () => {
       bootstrapAlert({ title: "Error", body: msg.error?.message || "Unknown error", color: "danger" });
     }
   };
+
   dataChannel.onclose = () => isRecording && stopRecording();
   dataChannel.onerror = () => bootstrapAlert({ title: "Error", body: "Data channel error", color: "danger" });
 };
+
 async function startRecording() {
   try {
     updateStatus("connecting", "Connecting...");
@@ -241,6 +254,7 @@ function stopRecording() {
   updateStatus("disconnected", "Disconnected");
   updateControlsState();
 }
+
 function openPresentationWindow() {
   if (presentationWindow && !presentationWindow.closed) return presentationWindow.focus();
   const themeFile = REVEAL_THEMES[val($themeSelect)];
@@ -248,15 +262,18 @@ function openPresentationWindow() {
   presentationWindow = window.open("", "LiveSlidesPresentation",
     `width=800,height=600,left=${(screen.width - 800) / 2},top=${(screen.height - 600) / 2},scrollbars=no,resizable=yes`
   );
+
   if (!presentationWindow) return bootstrapAlert({ title: "Popup Blocked", body: "Allow popups for this site.", color: "warning" });
   presentationWindow.document.write(html);
   presentationWindow.document.close();
   presentationWindow.onload = syncPresentationSlide;
 }
+
 const downloadSlides = () => {
   downloadPresentationHTML(slides, val($initialTitle), val($initialContent), REVEAL_THEMES[val($themeSelect)]);
   bootstrapAlert({ title: "Downloaded", body: "Presentation downloaded successfully!", color: "success" });
 };
+
 const cleanup = stopRecording;
 // Modal Controls
 $("config-btn").onclick = () => { $configModal.classList.add("show"); $configOverlay.classList.add("show"); };
@@ -268,6 +285,7 @@ $("save-config-btn").onclick = () => {
   $configOverlay.classList.remove("show");
   updateControlsState();
 };
+
 // Event Listeners
 $apiKey.oninput = () => { saveConfig(); updateControlsState(); };
 $modelSelect.onchange = $themeSelect.onchangeninput = $initialTitle.oninput = $initialContent.oninput = saveConfig;
@@ -277,6 +295,7 @@ $nextSlideBtn.onclick = () => navigateSlide(1);
 $openPresentationBtn.onclick = openPresentationWindow;
 $downloadHtmlBtn.onclick = downloadSlides;
 window.onbeforeunload = () => { cleanup(); presentationWindow?.close(); };
+
 // Initialize
 loadConfig();
 updateControlsState();
